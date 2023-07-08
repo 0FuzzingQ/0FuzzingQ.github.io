@@ -1,0 +1,658 @@
+
+
+<!DOCTYPE html>
+<html lang="en" data-default-color-scheme=light>
+
+
+
+<head>
+  <meta charset="UTF-8">
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="fuzzingq">
+  <meta name="keywords" content="">
+  
+    <meta name="description" content="前置知识solidity智能合约的转账主要通过send,transfer,call等函数实现。 1234567msg.sender.transfer(msg.value)msg.sender.send(msg.value)msg.sender.call&amp;#123;value: msg.value&amp;#125;() 三者的主要区别在于:  send transfer均有2300的最大gas消耗限制,如">
+<meta property="og:type" content="article">
+<meta property="og:title" content="BlockChain solidity 重入漏洞分析">
+<meta property="og:url" content="http://example.com/2022/09/29/BlockChain-solidity-%E9%87%8D%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/index.html">
+<meta property="og:site_name" content="Fuzzingq&#39;s B1og">
+<meta property="og:description" content="前置知识solidity智能合约的转账主要通过send,transfer,call等函数实现。 1234567msg.sender.transfer(msg.value)msg.sender.send(msg.value)msg.sender.call&amp;#123;value: msg.value&amp;#125;() 三者的主要区别在于:  send transfer均有2300的最大gas消耗限制,如">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2022-09-29T15:47:00.000Z">
+<meta property="article:modified_time" content="2023-07-08T15:55:29.401Z">
+<meta property="article:author" content="fuzzingq">
+<meta property="article:tag" content="solitidy">
+<meta property="article:tag" content="blockchain">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>BlockChain solidity 重入漏洞分析 - Fuzzingq&#39;s B1og</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/font_1749284_hj8rtnfg7um.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/font_1736178_lbnruvf0jn.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"example.com","root":"/","version":"1.9.5-a","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"woyaola":null,"cnzz":null,"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 6.3.0"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 70vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>Fuzzingq&#39;s B1og</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/">
+                <i class="iconfont icon-home-fill"></i>
+                <span>Home</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>Archives</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/">
+                <i class="iconfont icon-category-fill"></i>
+                <span>Categories</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>Tags</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/">
+                <i class="iconfont icon-user-fill"></i>
+                <span>About</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/bg.jpg') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="BlockChain solidity 重入漏洞分析"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2022-09-29 23:47" pubdate>
+          September 29, 2022 pm
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          4.3k words
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          36 mins
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">BlockChain solidity 重入漏洞分析</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <h2 id="前置知识"><a href="#前置知识" class="headerlink" title="前置知识"></a>前置知识</h2><p>solidity智能合约的转账主要通过send,transfer,call等函数实现。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><code class="hljs solidity"><br>msg.sender.transfer(msg.value)<br><br>msg.sender.send(msg.value)<br><br>msg.sender.call&#123;value: msg.value&#125;()<br><br></code></pre></td></tr></table></figure>
+<p>三者的主要区别在于:</p>
+<ol>
+<li>send transfer均有2300的最大gas消耗限制,如果一次操作消耗的gas大于2300,则操作失败。call方法执行则没有gas消耗限制</li>
+<li>transfer函数执行在失败后会回滚状态并终止后续步骤执行,而send和call函数则在失败时返回false,并不结束后续操作</li>
+<li>call函数在调用后会执行调用者的fallback函数,并将所有可用gas交给fallback函数使用</li>
+<li>transfer和send均为call函数的封装</li>
+</ol>
+<p>总结下来看transfer在使用时最为安全（失败时会抛出异常并执行回滚操作）,而send和call在使用时需要通过返回值的true&#x2F;false来判断转账操作是否执行成功</p>
+<h2 id="漏洞成因"><a href="#漏洞成因" class="headerlink" title="漏洞成因"></a>漏洞成因</h2><p>由于call函数没有2300gas的限制,导致在fallback函数中可以执行非常复杂的操作,包括再次向目标合约发起执行call操作的函数请求再次发起转账（由于gas不限制,因此可以执行复杂逻辑比如转账）。简单demo如下:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><code class="hljs solidity"><br>contract A &#123;<br>    function withdraw() public &#123;<br>        (bool sent,) = msg.sender.call&#123;value:1 ether&#125;;<br>        require(sent, &quot;Failed to send Ether&quot;);<br>    &#125;<br>&#125;<br><br>contract B &#123;<br>    A public a;<br>    constructor(address AddressOfContract_A) &#123;<br>        a = A(AddressOfContract_A);<br>    &#125;<br><br>    fallback() external payable &#123;<br>        a.withdraw(); <br>    &#125;<br><br>    function attack() external payable &#123;<br>        A.withdraw()<br>    &#125;<br><br>&#125;<br><br></code></pre></td></tr></table></figure>
+<p>可以看到当合约B调用attack函数时 会调用合约A的withdraw函数,withdraw会调用call方法向调用方(在这里也就是B的合约地址)转账。<br>在call函数转账成功后,会调用B合约的fallback函数。可以看到fallback函数中再次调用了A合约的withdraw方法,也就是说再次调用了call函数进行转账。而在这次call函数调用成功后,又回再次跳到B合约的fallback函数执行,在这次fallback中又会再次调用A合约的withdraw函数进行转账……<br>由此形成类似递归调用的逻辑,最终B函数通过一次withdraw调用可以把A合约中所有的ether转移走。这也就是重入漏洞的成因了。</p>
+<h2 id="再进一步"><a href="#再进一步" class="headerlink" title="再进一步"></a>再进一步</h2><p>看如下合约代码:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><code class="hljs solidity">pragma solidity ^0.8.0;<br><br>contract EtherStore &#123;<br>    mapping(address =&gt; uint) public balances;<br><br>    // 向银行合约地址中存入ether<br>    function deposit() public payable &#123;<br>        balances[msg.sender] += msg.value;<br>    &#125;<br><br>    // 从银行中取出所存的所有ether<br>    function withdraw() public &#123;<br>        uint bal = balances[msg.sender];                    //获取msg.sender在合约中的所有ether数量<br>        require(bal &gt; 0);                                   //需要存钱数量大于0才能进行取款操作<br><br>        (bool sent,) = msg.sender.call&#123;value: bal&#125;(&quot;&quot;);     //调用call方法将ether取出<br>        require(sent, &quot;Failed to send Ether&quot;);              //判断call执行是否成功<br><br>        balances[msg.sender] = 0;                           //取钱成功后,将msg.sender存钱金额记录为0（因为ether已经通过call全部取出了<br>    &#125;<br><br>    function getBalance() public view returns (uint) &#123;<br>        return address(this).balance;                       // 获取该合约中的所有ether数量<br>    &#125;<br><br>    fallback() external payable &#123;&#125;<br>&#125;<br></code></pre></td></tr></table></figure>
+<p>分析代码可以看出这是一个类似银行存储的合约,用户可以通过deposit函数存一定数量的ether,可以通过withdraw函数取走所有存储的ether。<br>可以看到:</p>
+<ul>
+<li>在执行call操作之前,代码逻辑判断可当前账户存款数是否大于0 大于0时才会有提取逻辑</li>
+<li>执行完call操作转账后后,通过balances[msg.sender] &#x3D; 0设置存储金额为0</li>
+</ul>
+<p>思路是在转账完成后将存款金额置0,这样即使通过重入攻击再次调用withdraw函数,也会因为无法绕过判断require(bal &gt; 0)而无法操作。然而事实上并不是这样。在我们理解了call和重入漏洞之后可以知道,fallback函数的调用是在call函数调用完成之后立即进行的,也就是其调用时间是早于balances[msg.sender] &#x3D; 0这一行代码执行的,因为当通过fallback函数再次调用withdraw时,balances[msg.sender]并不等于0,因此require(bal &gt; 0)判断条件成立,再次执行call操作再次转账。简单来讲 函数的执行逻辑并不像开发者所想的那样是:</p>
+<p>attack -&gt; withdraw -&gt; call -&gt; balances[msg.sender] &#x3D; 0 -&gt; fallback -&gt; withdraw -&gt; require(bal &gt; 0)失败 调用链结束</p>
+<p>而是:</p>
+<p>attack -&gt; withdraw -&gt; call -&gt; fallback -&gt; withdraw -&gt; fallback -&gt; withdraw -&gt; …… -&gt; address(this).balance &#x3D; 0 call无法转账 -&gt; balances[msg.sender] &#x3D; 0</p>
+<p>也就是说,重入攻击仍然可以进行。我们可以写出如下攻击合约:通过调用attack函数即可完成攻击</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><code class="hljs solidity">contract Attack &#123;<br>    EtherStore public etherStore;<br><br>    constructor(address payable _etherStoreAddress) &#123;<br>        etherStore = EtherStore(_etherStoreAddress);<br>    &#125;<br>    fallback() external payable &#123;<br>        if (address(etherStore).balance &gt;= 1 ether) &#123;<br>            etherStore.withdraw();<br>        &#125;<br>    &#125;<br>    function attack() external payable &#123;<br>        <br>        etherStore.deposit&#123;value: 1 ether&#125;();<br>        etherStore.withdraw();<br>    &#125;<br>&#125;<br></code></pre></td></tr></table></figure>
+
+<p>方便调试,笔者已经将两个合约都部署到了Rinkeby测试网络中便于各位调试,合于地址分别为:<br>EtherStore: 0xe732C451cFaF6e03B4189B64A18310A60758635B<br>Attack: 0x380b184C3C5F20C2f5b58fD54B543c68A4B3dB78</p>
+<p>在理解了这段代码之后,也就很好知道如何修复这个问题了,我们只需要将 balances[msg.sender] &#x3D; 0; 这行代码移到call调用之前执行即可,这样一来在第一次调用withdraw时,会先将balances[msg.sender]置为0在进行call转账操作。那么当转账成功后fallback再次调用withdraw时,balances[msg.sender]就已经为0了。此时require(bal &gt; 0)判断无法绕过也就不会再次进行转账了。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><code class="hljs solidity">function withdraw() public &#123;<br>        uint bal = balances[msg.sender];                    //获取msg.sender在合约中的所有ether数量<br>        require(bal &gt; 0);                                   //需要存钱数量大于0才能进行取款操作<br><br>        balances[msg.sender] = 0;                           //先将msg.sender存钱金额记录为0,在执行call进行转账<br><br>        (bool sent,) = msg.sender.call&#123;value: bal&#125;(&quot;&quot;);     //调用call方法将ether取出<br>        require(sent, &quot;Failed to send Ether&quot;);              //判断call执行是否成功<br>    &#125;<br></code></pre></td></tr></table></figure>
+
+<p>除了上述的解决方案之外,solidity本身也提供了一些方案用于解决重入攻击:</p>
+<ol>
+<li>在使用call函数进行转账时,可以通过call.value{gas:2300} 进行gas消耗限制(这种做法不被推荐,笔者也没详究原因)</li>
+<li>使用OpenZeppelin提供的nonReentrant修饰符对转账函数进行修饰。相当于对被调用函数加互斥锁防止其被重复调用。</li>
+</ol>
+<h2 id="参考文献"><a href="#参考文献" class="headerlink" title="参考文献"></a>参考文献</h2><p>[1]<a target="_blank" rel="noopener" href="https://solidity-by-example.org/fallback/">https://solidity-by-example.org/fallback/</a><br>[2]<a target="_blank" rel="noopener" href="https://solidity-by-example.org/call/">https://solidity-by-example.org/call/</a><br>[3]<a target="_blank" rel="noopener" href="https://docs.openzeppelin.com/contracts/4.x/api/security#ReentrancyGuard-nonReentrant--">https://docs.openzeppelin.com/contracts/4.x/api/security#ReentrancyGuard-nonReentrant--</a></p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/solitidy/" class="print-no-link">#solitidy</a>
+      
+        <a href="/tags/blockchain/" class="print-no-link">#blockchain</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>BlockChain solidity 重入漏洞分析</div>
+      <div>http://example.com/2022/09/29/BlockChain-solidity-重入漏洞分析/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>Author</div>
+          <div>fuzzingq</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>Posted on</div>
+          <div>September 29, 2022</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>Licensed under</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - Attribution">
+                    <i class="iconfont icon-by"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2022/09/23/Yii2-CVE-2020-15148-%E9%93%BE%E5%88%86%E6%9E%90-Part-1/" title="Yii2 CVE-2020-15148 链分析 Part 1">
+                        <span class="hidden-mobile">Yii2 CVE-2020-15148 链分析 Part 1</span>
+                        <span class="visible-mobile">Next</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>Table of Contents</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">Search</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">Keyword</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>I</span> <i class="iconfont icon-love"></i> <span>Hacking</span> 
+    </div>
+  
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    window.tocbot.init(Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc));
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/4.3.1/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">Blog works best with JavaScript enabled</div>
+  </noscript>
+</body>
+</html>
